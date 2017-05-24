@@ -8,7 +8,12 @@ import java.time.format.DateTimeFormatter
 import java.io.InputStreamReader
 import java.io.BufferedReader
 import org.apache.commons.cli.DefaultParser
+import org.apache.commons.lang3.SystemUtils
 import java.util.*
+import java.nio.file.Files
+import java.nio.file.Paths
+
+
 
 
 fun main(args: Array<String>) {
@@ -74,7 +79,7 @@ fun analyseAllRevisions(git: Git, startFromHash: String) {
         if (hasReached(logHash, startFromHash)) {
             print("Analysing revision: $logDateFormatted $logHash .. ")
             git.add()
-                    .addFilepattern("sonar.properties")
+                    .addFilepattern(".")
                     .call()
             val stash = git.stashCreate()
                     .call()
@@ -91,16 +96,19 @@ fun analyseAllRevisions(git: Git, startFromHash: String) {
             git.stashDrop()
                     .setStashRef(0)
                     .call()
-            Runtime.getRuntime().exec("sonar-scanner.bat" +
-                    " -Dproject.settings=sonar.properties" +
-                    " -Dsonar.projectDate=$logDateFormatted" +
-                    " 2>&1 ${logDateFormatted.subSequence(0,10)}-$logHash.out")
 
+            val loggingPath = Paths.get("${git.repository.directory.parent}/../sonar-scanner-logs/")
+            if (!Files.exists(loggingPath))
+                Files.createDirectories(loggingPath)
+            val scannerCmd: String
+            if (SystemUtils.IS_OS_WINDOWS)
+                scannerCmd = "sonar-scanner.bat"
+            else
+                scannerCmd = "sonar-scanner"
             val p: Process = Runtime.getRuntime().exec(
-                    "sonar-scanner.bat" +
-                            " -Dproject.settings=sonar.properties" +
-                            " -Dsonar.projectDate=$logDateFormatted" +
-                            " >../${logDateFormatted.subSequence(0,10)}-$logHash.out 2>&1",
+                    scannerCmd + " -D project.settings=sonar.properties" +
+                            " -D sonar.projectDate=$logDateFormatted" +
+                            " >../sonar-scanner-logs/${logDateFormatted.subSequence(0,10)}-$logHash.out 2>&1",
                     null,
                     File(git.repository.directory.parent))
             val returnCode = p.waitFor()
