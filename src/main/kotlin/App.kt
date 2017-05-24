@@ -12,8 +12,7 @@ import org.apache.commons.lang3.SystemUtils
 import java.util.*
 import java.nio.file.Files
 import java.nio.file.Paths
-
-
+import java.time.temporal.ChronoUnit
 
 
 fun main(args: Array<String>) {
@@ -70,14 +69,11 @@ fun analyseAllRevisions(git: Git, startFromHash: String) {
             .call()
     for (log in logEntries.reversed()) {
         val logDate = Instant.ofEpochSecond(log.commitTime.toLong())
-        val formatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
-                .withLocale(Locale.getDefault())
-                .withZone(ZoneId.systemDefault())
-        val logDateFormatted = formatter.format(logDate)
-                .removeRange(22, 23) // removes colon from time zone (to post timestamp to sonarqube analysis)
         val logHash = log.name
         if (hasReached(logHash, startFromHash)) {
+            val logDateFormatted = getSonarDate(logDate)
             print("Analysing revision: $logDateFormatted $logHash .. ")
+
             git.add()
                     .addFilepattern("sonar.properties")
                     .call()
@@ -121,6 +117,28 @@ fun analyseAllRevisions(git: Git, startFromHash: String) {
                 println("${Calendar.getInstance().time}: EXECUTION FAILURE, return code $returnCode")
         }
     }
+}
+
+/*
+Formats timestamp for sonar-scanner parameter
+If the timestamp is incorrect (older than a previous analysis or over a week younger)
+then previous timestamp+1 is used
+ */
+var previousDate: Instant? = null
+fun getSonarDate(logDate: Instant): String {
+    val sonarDate: Instant
+    if (previousDate != null && (previousDate!!.isAfter(logDate) || previousDate!!.plus(30, ChronoUnit.DAYS) < logDate)) {
+        sonarDate = previousDate!!.plusSeconds(1)
+        println("Date changed from:  $logDate")
+    } else
+        sonarDate = logDate
+    previousDate = sonarDate
+    val formatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
+            .withLocale(Locale.getDefault())
+            .withZone(ZoneId.systemDefault())
+    val result = formatter.format(sonarDate)
+            .removeRange(22, 23) // removes colon from time zone (to post timestamp to sonarqube analysis)
+    return result
 }
 
 var hasReached = false
