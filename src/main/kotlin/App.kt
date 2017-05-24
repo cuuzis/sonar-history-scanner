@@ -21,7 +21,8 @@ fun main(args: Array<String>) {
             .numberOfArgs(1)
             .required(true)
             .type(String::class.java)
-            .desc("path to git repository")
+            .desc("path to project's git repository (mandatory)" +
+                    "\n(e.g. \"C:\\...\\project1\\.git\")")
             .build()
 
     val firstRevisionOption = Option.builder("s")
@@ -29,27 +30,62 @@ fun main(args: Array<String>) {
             .numberOfArgs(1)
             .required(false)
             .type(String::class.java)
-            .desc("analyse only revisions since this")
+            .desc("analyse only revisions since this commit")
+            .build()
+
+    val propertiesFileOption = Option.builder("p")
+            .longOpt("properties")
+            .numberOfArgs(1)
+            .required(false)
+            .type(String::class.java)
+            .desc("specify sonar properties filename" +
+                    "\n(default is \"sonar.properties\")")
+            .build()
+
+    val changePropertiesFileOption = Option.builder("c")
+            .longOpt("change")
+            .numberOfArgs(2)
+            .required(false)
+            .type(String::class.java)
+            .desc("use different properties since this revision" +
+                    "\n<arg0> is sonar.properties-new filename" +
+                    "\n<arg1> is revision to use it from")
             .build()
 
     val options = Options()
     options.addOption(firstRevisionOption)
     options.addOption(gitRepoOption)
+    options.addOption(propertiesFileOption)
+    options.addOption(changePropertiesFileOption)
 
     val parser = DefaultParser()
     try {
         val cmdLine = parser.parse(options, args)
         val repositoryPath = cmdLine.getParsedOptionValue("git").toString()
-        val startFromHash =
+        val startFromRevision =
                 if (cmdLine.hasOption("since"))
                     cmdLine.getParsedOptionValue("since").toString()
                 else
                     ""
+        val propertiesFile =
+                if (cmdLine.hasOption("properties"))
+                    cmdLine.getParsedOptionValue("properties").toString()
+                else
+                    "sonar.properties"
 
+        val changedProperties: String
+        val changeRevision: String
+        if (cmdLine.hasOption("change")) {
+            changedProperties = cmdLine.getOptionValues("change")[0]
+            changeRevision = cmdLine.getOptionValues("change")[1]
+        } else {
+            changedProperties = ""
+            changeRevision = ""
+        }
         //val git = cloneRemoteRepository(repositoryURL)
         val git = openLocalRepository(repositoryPath)
         try {
-            analyseAllRevisions(git, startFromHash)
+            analyseAllRevisions(git, startFromRevision, propertiesFile, changedProperties, changeRevision)
         } finally {
             git.close()
         }
@@ -64,18 +100,21 @@ fun showHelp(options: Options) {
     formatter.printHelp("sonar-history-scanner.jar", options)
 }
 
-fun analyseAllRevisions(git: Git, startFromHash: String) {
+fun analyseAllRevisions(git: Git, startFromRevision: String, propertiesFile: String, propertiesFileNew: String, changeRevision: String) {
+    var propertiesFileName = propertiesFile
     val logEntries = git.log()
             .call()
     for (log in logEntries.reversed()) {
         val logDate = Instant.ofEpochSecond(log.commitTime.toLong())
         val logHash = log.name
-        if (hasReached(logHash, startFromHash)) {
+        if (logHash == changeRevision)
+            propertiesFileName = propertiesFileNew
+        if (hasReached(logHash, startFromRevision)) {
             val logDateFormatted = getSonarDate(logDate)
             print("Analysing revision: $logDateFormatted $logHash .. ")
 
             git.add()
-                    .addFilepattern("sonar.properties")
+                    .addFilepattern("$propertiesFile|$propertiesFileNew")
                     .call()
             val stash = git.stashCreate()
                     .call()
@@ -102,7 +141,7 @@ fun analyseAllRevisions(git: Git, startFromHash: String) {
             else
                 scannerCmd = "sonar-scanner"
             val p: Process = Runtime.getRuntime().exec(
-                    scannerCmd + " -D project.settings=sonar.properties" +
+                    scannerCmd + " -D project.settings=$propertiesFileName" +
                             " -D sonar.projectDate=$logDateFormatted" +
                             " >../sonar-scanner-logs/${logDateFormatted.subSequence(0,10)}-$logHash.out 2>&1",
                     null,
@@ -121,7 +160,7 @@ fun analyseAllRevisions(git: Git, startFromHash: String) {
 
 /*
 Formats timestamp for sonar-scanner parameter
-If the timestamp is incorrect (older than a previous analysis or over a week younger)
+If the timestamp is incorrect (older than a previous analysis or over a month younger)
 then previous timestamp+1 is used
  */
 var previousDate: Instant? = null
