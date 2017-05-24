@@ -25,12 +25,12 @@ fun main(args: Array<String>) {
             .desc("path to git repository")
             .build()
 
-    val firstRevisionOption = Option.builder("f")
-            .longOpt("first")
+    val firstRevisionOption = Option.builder("s")
+            .longOpt("since")
             .numberOfArgs(1)
             .required(false)
             .type(String::class.java)
-            .desc("first revision to start analysis from")
+            .desc("analyse only revisions since this")
             .build()
 
     val options = Options()
@@ -42,8 +42,8 @@ fun main(args: Array<String>) {
         val cmdLine = parser.parse(options, args)
         val repositoryPath = cmdLine.getParsedOptionValue("git").toString()
         val startFromHash =
-                if (cmdLine.hasOption("first"))
-                    cmdLine.getParsedOptionValue("first").toString()
+                if (cmdLine.hasOption("since"))
+                    cmdLine.getParsedOptionValue("since").toString()
                 else
                     ""
 
@@ -79,7 +79,7 @@ fun analyseAllRevisions(git: Git, startFromHash: String) {
         if (hasReached(logHash, startFromHash)) {
             print("Analysing revision: $logDateFormatted $logHash .. ")
             git.add()
-                    .addFilepattern(".")
+                    .addFilepattern("sonar.properties")
                     .call()
             val stash = git.stashCreate()
                     .call()
