@@ -10,9 +10,9 @@ import java.io.BufferedReader
 import org.apache.commons.cli.DefaultParser
 import org.apache.commons.lang3.SystemUtils
 import java.util.*
-import java.nio.file.Files
-import java.nio.file.Paths
 import java.time.temporal.ChronoUnit
+import java.lang.ProcessBuilder.Redirect
+
 
 
 fun main(args: Array<String>) {
@@ -125,39 +125,21 @@ fun analyseAllRevisions(git: Git, startFromRevision: String, propertiesFile: Str
             val logDateFormatted = getSonarDate(logDate)
             print("Analysing revision: $logDateFormatted $logHash .. ")
 
-            git.add()
-                    .addFilepattern("$propertiesFile|$propertiesFileNew|$propertiesFileNew2")
-                    .call()
-            val stash = git.stashCreate()
-                    .call()
-            if (stash == null)
-                throw Exception("Missing sonar.properties file")
-            git.checkout()
-                    .setForce(true)
-                    .setName(git.repository.branch)
-                    .setStartPoint(log)
-                    .call()
-            git.stashApply()
-                    .setStashRef(stash.name)
-                    .call()
-            git.stashDrop()
-                    .setStashRef(0)
-                    .call()
+            checkoutFromCmd(logHash, git)
 
-            val loggingPath = Paths.get("${git.repository.directory.parent}/../sonar-scanner-logs/")
-            if (!Files.exists(loggingPath))
-                Files.createDirectories(loggingPath)
             val scannerCmd: String
             if (SystemUtils.IS_OS_WINDOWS)
                 scannerCmd = "sonar-scanner.bat"
             else
                 scannerCmd = "sonar-scanner"
-            val p: Process = Runtime.getRuntime().exec(
-                    scannerCmd + " -D project.settings=$propertiesFileName" +
-                            " -D sonar.projectDate=$logDateFormatted" +
-                            " >../sonar-scanner-logs/${logDateFormatted.subSequence(0,10)}-$logHash.out 2>&1",
-                    null,
-                    File(git.repository.directory.parent))
+            val pb = ProcessBuilder(scannerCmd,
+                    "-Dproject.settings=$propertiesFileName",
+                    "-Dsonar.projectDate=$logDateFormatted")
+            pb.directory(File(git.repository.directory.parent))
+            val logFile = File("${git.repository.directory.parent}/../full-log.out")
+            pb.redirectErrorStream(true)
+            pb.redirectOutput(Redirect.appendTo(logFile))
+            val p = pb.start()
             val returnCode = p.waitFor()
             val reader = BufferedReader(InputStreamReader(p.inputStream))
             val allText = reader.use(BufferedReader::readText)
@@ -166,8 +148,24 @@ fun analyseAllRevisions(git: Git, startFromRevision: String, propertiesFile: Str
                 println("${Calendar.getInstance().time}: EXECUTION SUCCESS")
             else
                 println("${Calendar.getInstance().time}: EXECUTION FAILURE, return code $returnCode")
+
         }
     }
+}
+
+fun checkoutFromCmd(logHash: String, git: Git) {
+    val pb = ProcessBuilder("git","checkout","-f",logHash)
+    pb.directory(File(git.repository.directory.parent))
+    val logFile = File("${git.repository.directory.parent}/../full-log.out")
+    pb.redirectErrorStream(true)
+    pb.redirectOutput(Redirect.appendTo(logFile))
+    val p = pb.start()
+    val returnCode = p.waitFor()
+    val reader = BufferedReader(InputStreamReader(p.inputStream))
+    val allText = reader.use(BufferedReader::readText)
+    print(allText)
+    if (returnCode != 0)
+        throw Exception("git checkout error")
 }
 
 /*
