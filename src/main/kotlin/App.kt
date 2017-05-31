@@ -14,7 +14,7 @@ import java.lang.ProcessBuilder.Redirect
 
 
 fun main(args: Array<String>) {
-    val scanOptions = ScanOptions.parseOptions(args)
+    val scanOptions = parseOptions(args)
     if (scanOptions != null) {
         //val git = cloneRemoteRepository(repositoryURL)
         val git = openLocalRepository(scanOptions.repositoryPath)
