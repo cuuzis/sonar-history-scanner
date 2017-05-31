@@ -1,4 +1,3 @@
-import org.apache.commons.cli.*
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import java.io.File
@@ -7,7 +6,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.io.InputStreamReader
 import java.io.BufferedReader
-import org.apache.commons.cli.DefaultParser
 import org.apache.commons.lang3.SystemUtils
 import java.util.*
 import java.time.temporal.ChronoUnit
@@ -16,112 +14,33 @@ import java.lang.ProcessBuilder.Redirect
 
 
 fun main(args: Array<String>) {
-    val gitRepoOption = Option.builder("g")
-            .longOpt("git")
-            .numberOfArgs(1)
-            .required(true)
-            .type(String::class.java)
-            .desc("path to project's git repository (mandatory)" +
-                    "\n(e.g. \"C:\\...\\project1\\.git\")")
-            .build()
-
-    val firstRevisionOption = Option.builder("s")
-            .longOpt("since")
-            .numberOfArgs(1)
-            .required(false)
-            .type(String::class.java)
-            .desc("analyse only revisions since this commit")
-            .build()
-
-    val propertiesFileOption = Option.builder("p")
-            .longOpt("properties")
-            .numberOfArgs(1)
-            .required(false)
-            .type(String::class.java)
-            .desc("specify sonar properties filename" +
-                    "\n(default is \"sonar.properties\")")
-            .build()
-
-    val changePropertiesFileOption = Option.builder("c")
-            .longOpt("change")
-            .numberOfArgs(4)
-            .required(false)
-            .type(String::class.java)
-            .desc("use different properties since this revision" +
-                    "\n<arg0> is sonar.properties-new1 filename" +
-                    "\n<arg1> is revision to use it from" +
-                    "\n<arg2> is sonar.properties-new2 filename" +
-                    "\n<arg3> is revision to use it from")
-            .build()
-
-    val options = Options()
-    options.addOption(firstRevisionOption)
-    options.addOption(gitRepoOption)
-    options.addOption(propertiesFileOption)
-    options.addOption(changePropertiesFileOption)
-
-    val parser = DefaultParser()
-    try {
-        val cmdLine = parser.parse(options, args)
-        val repositoryPath = cmdLine.getParsedOptionValue("git").toString()
-        val startFromRevision =
-                if (cmdLine.hasOption("since"))
-                    cmdLine.getParsedOptionValue("since").toString()
-                else
-                    ""
-        val propertiesFile =
-                if (cmdLine.hasOption("properties"))
-                    cmdLine.getParsedOptionValue("properties").toString()
-                else
-                    "sonar.properties"
-
-        val changedProperties: String
-        val changeRevision: String
-        val changedProperties2: String
-        val changeRevision2: String
-        if (cmdLine.hasOption("change")) {
-            changedProperties = cmdLine.getOptionValues("change")[0]
-            changeRevision = cmdLine.getOptionValues("change")[1]
-            changedProperties2 = cmdLine.getOptionValues("change")[2]
-            changeRevision2 = cmdLine.getOptionValues("change")[3]
-        } else {
-            changedProperties = ""
-            changeRevision = ""
-            changedProperties2 = ""
-            changeRevision2 = ""
-        }
+    val scanOptions = ScanOptions.parseOptions(args)
+    if (scanOptions != null) {
         //val git = cloneRemoteRepository(repositoryURL)
-        val git = openLocalRepository(repositoryPath)
+        val git = openLocalRepository(scanOptions.repositoryPath)
         try {
-            analyseAllRevisions(git, startFromRevision, propertiesFile, changedProperties, changeRevision,
-                    changedProperties2, changeRevision2)
+            analyseAllRevisions(git, scanOptions)
         } finally {
             git.close()
         }
-    } catch (e: ParseException) {
-        println(e.message)
-        showHelp(options)
     }
 }
 
-fun showHelp(options: Options) {
-    val formatter = HelpFormatter()
-    formatter.printHelp("sonar-history-scanner.jar", options)
-}
-
-fun analyseAllRevisions(git: Git, startFromRevision: String, propertiesFile: String, propertiesFileNew: String, changeRevision: String,
-                        propertiesFileNew2: String, changeRevision2: String) {
-    var propertiesFileName = propertiesFile
+fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
+    //println("Log is written to ${git.repository.directory.parent}/../full-log.out")
+    var propertiesFileName = scanOptions.propertiesFile
+    var changeIdx = 0
     val logEntries = git.log()
             .call()
     for (log in logEntries.reversed()) {
         val logDate = Instant.ofEpochSecond(log.commitTime.toLong())
         val logHash = log.name
-        if (logHash == changeRevision)
-            propertiesFileName = propertiesFileNew
-        if (logHash == changeRevision2)
-            propertiesFileName = propertiesFileNew2
-        if (hasReached(logHash, startFromRevision)) {
+        if (scanOptions.changeRevisions.size > changeIdx)
+            if (logHash == scanOptions.changeRevisions.get(changeIdx)) {
+                propertiesFileName = scanOptions.changeProperties.get(changeIdx)
+                changeIdx++
+            }
+        if (hasReached(logHash, scanOptions.startFromRevision)) {
             val logDateFormatted = getSonarDate(logDate)
             print("Analysing revision: $logDateFormatted $logHash .. ")
 
