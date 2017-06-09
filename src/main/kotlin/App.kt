@@ -1,3 +1,4 @@
+import org.apache.commons.lang3.SystemUtils
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import java.io.File
@@ -6,7 +7,6 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.io.InputStreamReader
 import java.io.BufferedReader
-import org.apache.commons.lang3.SystemUtils
 import java.util.*
 import java.time.temporal.ChronoUnit
 import java.lang.ProcessBuilder.Redirect
@@ -50,39 +50,40 @@ fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
                 sonarProperties = scanOptions.changeProperties[changeIdx]
                 changeIdx++
             }
-        if (hasReached(logHash, scanOptions.startFromRevision)) {
-            val logDateRaw = Instant.ofEpochSecond(value.commitTime.toLong())
-            val logDate = logDates[index]
-            if (logDate != logDateRaw)
-                println("Date changed from $logDateRaw")
+        if (hasReached(logHash, scanOptions.startFromRevision, index)) {
+            if ((index-reachedAt) % scanOptions.analyzeEvery == 0) {
+                val logDateRaw = Instant.ofEpochSecond(value.commitTime.toLong())
+                val logDate = logDates[index]
+                if (logDate != logDateRaw)
+                    println("Date changed from $logDateRaw")
 
-            val sonarDate = getSonarDate(logDate)
-            print("Analysing revision: $sonarDate $logHash .. ")
+                val sonarDate = getSonarDate(logDate)
+                print("Analysing revision: $sonarDate $logHash .. ")
 
-            checkoutFromCmd(logHash, git)
+                checkoutFromCmd(logHash, git)
 
-            val scannerCmd: String
-            if (SystemUtils.IS_OS_WINDOWS)
-                scannerCmd = "sonar-scanner.bat"
-            else
-                scannerCmd = "sonar-scanner"
-            val pb = ProcessBuilder(scannerCmd,
-                    "-Dproject.settings=$sonarProperties",
-                    "-Dsonar.projectDate=$sonarDate")
-            pb.directory(File(git.repository.directory.parent))
-            val logFile = File("${git.repository.directory.parent}/../full-log.out")
-            pb.redirectErrorStream(true)
-            pb.redirectOutput(Redirect.appendTo(logFile))
-            val p = pb.start()
-            val returnCode = p.waitFor()
-            val reader = BufferedReader(InputStreamReader(p.inputStream))
-            val allText = reader.use(BufferedReader::readText)
-            print(allText)
-            if (returnCode == 0)
-                println("${Calendar.getInstance().time}: EXECUTION SUCCESS")
-            else
-                println("${Calendar.getInstance().time}: EXECUTION FAILURE, return code $returnCode")
-
+                val scannerCmd: String
+                if (SystemUtils.IS_OS_WINDOWS)
+                    scannerCmd = "sonar-scanner.bat"
+                else
+                    scannerCmd = "sonar-scanner"
+                val pb = ProcessBuilder(scannerCmd,
+                        "-Dproject.settings=$sonarProperties",
+                        "-Dsonar.projectDate=$sonarDate")
+                pb.directory(File(git.repository.directory.parent))
+                val logFile = File("${git.repository.directory.parent}/../full-log.out")
+                pb.redirectErrorStream(true)
+                pb.redirectOutput(Redirect.appendTo(logFile))
+                val p = pb.start()
+                val returnCode = p.waitFor()
+                val reader = BufferedReader(InputStreamReader(p.inputStream))
+                val allText = reader.use(BufferedReader::readText)
+                print(allText)
+                if (returnCode == 0)
+                    println("${Calendar.getInstance().time}: EXECUTION SUCCESS")
+                else
+                    println("${Calendar.getInstance().time}: EXECUTION FAILURE, return code $returnCode")
+            }
         }
     }
 }
@@ -145,9 +146,12 @@ fun smoothDates(logDates: List<Instant>): List<Instant> {
 }
 
 var hasReached = false
-fun  hasReached(hash: String, startFromHash: String): Boolean {
-    if (startFromHash == "" || startFromHash == hash)
+var reachedAt = 0
+fun  hasReached(hash: String, startFromHash: String, index: Int): Boolean {
+    if (startFromHash == "" || startFromHash == hash) {
         hasReached = true
+        reachedAt = index
+    }
     return hasReached
 }
 

@@ -6,7 +6,8 @@ data class ScanOptions(
         val startFromRevision: String,
         val propertiesFile: String,
         val changeProperties: List<String> = ArrayList<String>(),
-        val changeRevisions: List<String> = ArrayList<String>())
+        val changeRevisions: List<String> = ArrayList<String>(),
+        val analyzeEvery: Int = 1)
 
 fun parseOptions(args: Array<String>): ScanOptions? {
     val OPT_REPOSITORY = "git"
@@ -50,11 +51,22 @@ fun parseOptions(args: Array<String>): ScanOptions? {
                     "\n(e.g. -$OPT_CHANGE properties1,properties2 hash1,hash2)")
             .build()
 
+    val OPT_EVERY = "every"
+    val scanEveryOption = Option.builder("e")
+            .longOpt(OPT_EVERY)
+            .numberOfArgs(1)
+            .required(false)
+            .type(Int::class.java)
+            .desc("scan only every <arg0> revision " +
+                    "\n(e.g. -$OPT_EVERY 10)")
+            .build()
+
     val options = Options()
     options.addOption(repositoryOption)
     options.addOption(firstRevisionOption)
     options.addOption(propertiesFileOption)
     options.addOption(changePropertiesFileOption)
+    options.addOption(scanEveryOption)
 
     try {
         val parser = DefaultParser()
@@ -70,25 +82,38 @@ fun parseOptions(args: Array<String>): ScanOptions? {
                     cmdLine.getParsedOptionValue(OPT_PROPERTIES).toString()
                 else
                     "sonar.properties"
+        val analyseEvery =
+                if (cmdLine.hasOption(OPT_EVERY)) {
+                    try {
+                        Integer.valueOf(cmdLine.getOptionValue(OPT_EVERY))
+                    } catch (e: Exception) {
+                        -1
+                    }
+                } else
+                    1
+        if (analyseEvery < 1)
+            throw Exception("-$OPT_EVERY Analyse every revision should be a number greater or equal to 1")
         if (cmdLine.hasOption(OPT_CHANGE)) {
             val changeProperties = cmdLine.getOptionValues(OPT_CHANGE)[0].split(",")
             val changeRevisions = cmdLine.getOptionValues(OPT_CHANGE)[1].split(",")
             if (changeProperties.size != changeRevisions.size)
-                throw ParseException("Each changed property file should correspond to a revision hash.")
+                throw ParseException("-$OPT_CHANGE Each changed property file should correspond to a revision hash.")
             for (filename in changeProperties)
                 if (filename == "")
-                    throw ParseException("Change properties filename should not be empty.")
+                    throw ParseException("-$OPT_CHANGE Change properties filename should not be empty.")
             return ScanOptions(
                     repositoryPath,
                     startFromRevision,
                     propertiesFile,
                     changeProperties,
-                    changeRevisions)
+                    changeRevisions,
+                    analyzeEvery = analyseEvery)
         } else {
             return ScanOptions(
                     repositoryPath,
                     startFromRevision,
-                    propertiesFile)
+                    propertiesFile,
+                    analyzeEvery = analyseEvery)
         }
 
     } catch (e: ParseException) {
