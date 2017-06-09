@@ -47,7 +47,7 @@ fun parseOptions(args: Array<String>): ScanOptions? {
             .desc("use different properties since this revision" +
                     "\n<arg0> is sonar.properties files, separated by commas" +
                     "\n<arg1> is revisions to start using these property files from, separated by commas" +
-                    "\n(e.g. -$OPT_CHANGE properties1.properties,properties2.properties hash1,hash2)")
+                    "\n(e.g. -$OPT_CHANGE properties1,properties2 hash1,hash2)")
             .build()
 
     val options = Options()

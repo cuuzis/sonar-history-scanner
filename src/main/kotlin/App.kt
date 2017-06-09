@@ -26,23 +26,38 @@ fun main(args: Array<String>) {
     }
 }
 
+/*
+Analyses all past revisions for the specified project.
+Runs from the first revision or options.startFromRevision up to current revision of the git file.
+ */
 fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
     //println("Log is written to ${git.repository.directory.parent}/../full-log.out")
-    var propertiesFileName = scanOptions.propertiesFile
+    var sonarProperties = scanOptions.propertiesFile
     var changeIdx = 0
     val logEntries = git.log()
             .call()
-    for (log in logEntries.reversed()) {
-        val logDate = Instant.ofEpochSecond(log.commitTime.toLong())
-        val logHash = log.name
+            .reversed()
+
+    val logDatesRaw = mutableListOf<Instant>()
+    for(log in logEntries)
+        logDatesRaw.add(Instant.ofEpochSecond(log.commitTime.toLong()))
+    val logDates = smoothDates(logDatesRaw)
+
+    for ((index, value) in logEntries.withIndex()) {
+        val logHash = value.name
         if (scanOptions.changeRevisions.size > changeIdx)
-            if (logHash == scanOptions.changeRevisions.get(changeIdx)) {
-                propertiesFileName = scanOptions.changeProperties.get(changeIdx)
+            if (logHash == scanOptions.changeRevisions[changeIdx]) {
+                sonarProperties = scanOptions.changeProperties[changeIdx]
                 changeIdx++
             }
         if (hasReached(logHash, scanOptions.startFromRevision)) {
-            val logDateFormatted = getSonarDate(logDate)
-            print("Analysing revision: $logDateFormatted $logHash .. ")
+            val logDateRaw = Instant.ofEpochSecond(value.commitTime.toLong())
+            val logDate = logDates[index]
+            if (logDate != logDateRaw)
+                println("Date changed from $logDateRaw")
+
+            val sonarDate = getSonarDate(logDate)
+            print("Analysing revision: $sonarDate $logHash .. ")
 
             checkoutFromCmd(logHash, git)
 
@@ -52,8 +67,8 @@ fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
             else
                 scannerCmd = "sonar-scanner"
             val pb = ProcessBuilder(scannerCmd,
-                    "-Dproject.settings=$propertiesFileName",
-                    "-Dsonar.projectDate=$logDateFormatted")
+                    "-Dproject.settings=$sonarProperties",
+                    "-Dsonar.projectDate=$sonarDate")
             pb.directory(File(git.repository.directory.parent))
             val logFile = File("${git.repository.directory.parent}/../full-log.out")
             pb.redirectErrorStream(true)
@@ -72,6 +87,9 @@ fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
     }
 }
 
+/*
+Checks out the revision with specified hash, using the command line
+ */
 fun checkoutFromCmd(logHash: String, git: Git) {
     val pb = ProcessBuilder("git","checkout","-f",logHash)
     pb.directory(File(git.repository.directory.parent))
@@ -88,24 +106,41 @@ fun checkoutFromCmd(logHash: String, git: Git) {
 }
 
 /*
-Formats timestamp for sonar-scanner parameter
-If the timestamp is incorrect (older than a previous analysis or over a month younger)
-then previous timestamp+1 is used
+Formats timestamp for using as a sonar-scanner parameter
  */
-var previousDate: Instant? = null
 fun getSonarDate(logDate: Instant): String {
-    val sonarDate: Instant
-    if (previousDate != null && (previousDate!!.isAfter(logDate) || previousDate!!.plus(30, ChronoUnit.DAYS) < logDate)) {
-        sonarDate = previousDate!!.plusSeconds(1)
-        println("Date changed from:  $logDate")
-    } else
-        sonarDate = logDate
-    previousDate = sonarDate
     val formatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
             .withLocale(Locale.getDefault())
             .withZone(ZoneId.systemDefault())
-    val result = formatter.format(sonarDate)
+    val result = formatter.format(logDate)
             .removeRange(22, 23) // removes colon from time zone (to post timestamp to sonarqube analysis)
+    return result
+}
+
+/*
+Makes sure commit dates are in an increasing order for doing repeated analysis
+Increases day offset until the last commit date does not get changed by smoothing
+*/
+fun smoothDates(logDates: List<Instant>): List<Instant> {
+    var daysOffset: Long = 1
+    val result = mutableListOf<Instant>()
+    while (result.lastOrNull() != logDates.last()) {
+        result.clear()
+        result.add(logDates.first())
+        var previousDate = logDates.first()
+        for (currentDate in logDates.subList(1, logDates.size)) {
+            if (previousDate >= currentDate || previousDate.plus(daysOffset, ChronoUnit.DAYS) < currentDate)
+                previousDate = previousDate.plusSeconds(1)
+            else
+                previousDate = currentDate
+            result.add(previousDate)
+        }
+        daysOffset++
+
+        // if last date is screwed up
+        if (logDates.last() <= logDates.first())
+            break
+    }
     return result
 }
 
