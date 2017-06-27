@@ -7,6 +7,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.io.InputStreamReader
 import java.io.BufferedReader
+import java.io.FileReader
 import java.util.*
 import java.time.temporal.ChronoUnit
 import java.lang.ProcessBuilder.Redirect
@@ -33,6 +34,13 @@ Runs from the first revision or options.startFromRevision up to current revision
 fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
     //println("Log is written to ${git.repository.directory.parent}/../full-log.out")
     var sonarProperties = scanOptions.propertiesFile
+
+    val revisionsToScan =
+            if (scanOptions.revisionFile == "")
+                mutableListOf<String>()
+            else
+                readLinesFromFile(scanOptions.revisionFile)
+    
     var changeIdx = 0
     val logEntries = git.log()
             .call()
@@ -51,7 +59,8 @@ fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
                 changeIdx++
             }
         if (hasReached(logHash, scanOptions.startFromRevision, index)) {
-            if ((index-reachedAt) % scanOptions.analyzeEvery == 0) {
+            if ((index-reachedAt) % scanOptions.analyzeEvery == 0
+                    && (revisionsToScan.isEmpty() || revisionsToScan.contains(logHash)) )  {
                 val logDateRaw = Instant.ofEpochSecond(value.commitTime.toLong())
                 val logDate = logDates[index]
                 if (logDate != logDateRaw)
@@ -86,6 +95,18 @@ fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
             }
         }
     }
+}
+
+fun readLinesFromFile(file: String): List<String> {
+    val result = mutableListOf<String>()
+    BufferedReader(FileReader(file)).use { br ->
+        do {
+            val line = br.readLine()
+            if (line != null)
+                result.add(line)
+        } while (line != null)
+    }
+    return result
 }
 
 /*
