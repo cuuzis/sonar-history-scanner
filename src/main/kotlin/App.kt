@@ -17,12 +17,25 @@ import java.lang.ProcessBuilder.Redirect
 fun main(args: Array<String>) {
     val scanOptions = parseOptions(args)
     if (scanOptions != null) {
-        //val git = cloneRemoteRepository(repositoryURL)
-        val git = openLocalRepository(scanOptions.repositoryPath)
+        var tempScanDirectory: File? = null
+        val git =
+                if (scanOptions.repositoryPath.startsWith("http")) {
+                    tempScanDirectory = File("temp-scan-directory")
+                    cloneRemoteRepository(scanOptions.repositoryPath, tempScanDirectory)
+                } else {
+                    openLocalRepository(scanOptions.repositoryPath)
+                }
         try {
             analyseAllRevisions(git, scanOptions)
         } finally {
             git.close()
+        }
+
+        if (tempScanDirectory != null) {
+            if (tempScanDirectory.deleteRecursively())
+                println("Deleted $tempScanDirectory")
+            else
+                println("Could not delete $tempScanDirectory")
         }
     }
 }
@@ -34,6 +47,8 @@ Runs from the first revision or options.startFromRevision up to current revision
 fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
     //println("Log is written to ${git.repository.directory.parent}/../full-log.out")
     var sonarProperties = scanOptions.propertiesFile
+
+    copyPropertyFiles(git, scanOptions)
 
     val revisionsToScan =
             if (scanOptions.revisionFile == "")
@@ -80,7 +95,7 @@ fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
                         "-Dproject.settings=$sonarProperties",
                         "-Dsonar.projectDate=$sonarDate")
                 pb.directory(File(git.repository.directory.parent))
-                val logFile = File("${git.repository.directory.parent}/../full-log.out")
+                val logFile = File("${git.repository.directory.parent + File.separator}..${File.separator}full-log.out")
                 pb.redirectErrorStream(true)
                 pb.redirectOutput(Redirect.appendTo(logFile))
                 val p = pb.start()
@@ -94,6 +109,12 @@ fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
                     println("${Calendar.getInstance().time}: EXECUTION FAILURE, return code $returnCode")
             }
         }
+    }
+}
+
+fun  copyPropertyFiles(git: Git, scanOptions: ScanOptions) {
+    for (propertiesFile in scanOptions.changeProperties + scanOptions.propertiesFile) {
+        File(propertiesFile).copyTo(File(git.repository.directory.parent + File.separator + propertiesFile))
     }
 }
 
@@ -192,16 +213,12 @@ fun openLocalRepository(repositoryPath: String): Git {
     }
 }
 
-fun cloneRemoteRepository(repositoryURL: String): Git {
-    val localPath: File = createTempFile("TestGitRepo")
-    if (!localPath.delete()) {
-        throw Exception("Could not delete temporary file $localPath")
-    }
+fun cloneRemoteRepository(repositoryURL: String, directory: File): Git {
     try {
         println("Cloning repository from $repositoryURL\n...")
         val result: Git = Git.cloneRepository()
                 .setURI(repositoryURL)
-                .setDirectory(localPath)
+                .setDirectory(directory)
                 .call()
         println("Repository cloned into ${result.repository.directory.parent}")
         return result

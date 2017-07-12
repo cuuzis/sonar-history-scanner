@@ -7,6 +7,11 @@
       </list>
     </option>
   </component>
+  <component name="ProjectPlainTextFileTypeManager">
+    <file url="file://$PROJECT_DIR$/my.properties" />
+    <file url="file://$PROJECT_DIR$/my2.properties" />
+    <file url="file://$PROJECT_DIR$/my3.properties" />
+  </component>
   <component name="ProjectRootManager" version="2" languageLevel="JDK_1_8" project-jdk-name="1.8" project-jdk-type="JavaSDK">
     <output url="file://$PROJECT_DIR$/out" />
   </component>
