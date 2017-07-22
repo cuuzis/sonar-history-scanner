@@ -149,15 +149,15 @@ fun checkoutFromCmd(logHash: String, git: Git) {
 }
 
 /*
-Formats timestamp for using as a sonar-scanner parameter
- */
+* Formats timestamp for using it as a sonar-scanner parameter
+*/
 fun getSonarDate(logDate: Instant): String {
     val formatter = DateTimeFormatter.ISO_OFFSET_DATE_TIME
-            .withLocale(Locale.getDefault())
+            .withLocale(Locale.ENGLISH)
             .withZone(ZoneId.systemDefault())
-    val result = formatter.format(logDate)
-            .removeRange(22, 23) // removes colon from time zone (to post timestamp to sonarqube analysis)
-    return result
+    var dateStr = formatter.format(logDate)
+    dateStr = dateStr.replace("Z", "+00:00") // for UTC time zone
+    return dateStr.removeRange(22, 23) // removes colon from time zone (to post timestamp to sonarqube analysis)
 }
 
 /*
