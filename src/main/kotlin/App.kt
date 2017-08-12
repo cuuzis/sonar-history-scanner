@@ -18,22 +18,22 @@ import java.lang.ProcessBuilder.Redirect
  */
 fun main(args: Array<String>) {
     val scanOptions = parseOptions(args)
-    val tempScanDirectory = File("temp-scan-directory")
+    val tempSourceDirectory = File(scanOptions.analysisDirectory + "temp-sonar-analysis-directory" + File.separatorChar + "src")
     val git =
             if (scanOptions.repositoryPath.startsWith("http"))
-                cloneRemoteRepository(scanOptions.repositoryPath, tempScanDirectory)
+                cloneRemoteRepository(scanOptions.repositoryPath, tempSourceDirectory)
             else
-                copyLocalRepository(scanOptions.repositoryPath, tempScanDirectory)
+                copyLocalRepository(scanOptions.repositoryPath, tempSourceDirectory)
     try {
         analyseAllRevisions(git, scanOptions)
     } finally {
         git.repository.close()
     }
 
-    if (tempScanDirectory.deleteRecursively())
-        println("Deleted $tempScanDirectory")
+    if (tempSourceDirectory.parentFile.deleteRecursively()) // "temp-sonar-analysis-directory"
+        println("Deleted $tempSourceDirectory")
     else
-        throw Exception("Could not delete $tempScanDirectory")
+        throw Exception("Could not delete $tempSourceDirectory")
 }
 
 /**
@@ -63,30 +63,36 @@ fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
 
             val sonarDateStr = getSonarDate(logDateSonar)
             print("Analysing revision: $sonarDateStr $logHash .. ")
-
             checkoutFromJGit(logHash, git)
 
-            val scannerCmd: String
-            if (SystemUtils.IS_OS_WINDOWS)
-                scannerCmd = "sonar-scanner.bat"
-            else
-                scannerCmd = "sonar-scanner"
+            val analysisDirectory = File(git.repository.directory.parent)
+            val proxyDiskTemp = File(analysisDirectory.parentFile.path + File.separator + "Temp")
+            proxyDiskTemp.mkdirs() // directory used by ProxyDisk in ptidej
+            val tempLog = File(proxyDiskTemp.path + File.separatorChar + "temp-log.log")
+
+            val scannerCmd =
+                    if (SystemUtils.IS_OS_WINDOWS)
+                        "sonar-scanner.bat"
+                    else
+                        "sonar-scanner"
             val pb = ProcessBuilder(scannerCmd,
                     "-Dproject.settings=$sonarPropertiesFile",
                     "-Dsonar.projectDate=$sonarDateStr")
-            pb.directory(File(git.repository.directory.parent))
-            val logFile = File("${git.repository.directory.parent + File.separator}..${File.separator}full-log.out")
-            pb.redirectErrorStream(true)
-            pb.redirectOutput(Redirect.appendTo(logFile))
+                    .directory(analysisDirectory)
+                    //.inheritIO()
+                    .redirectInput(Redirect.INHERIT) // no input is asked by sonar-scanner anyway
+                    .redirectErrorStream(true)
+                    .redirectOutput(tempLog)
             val p = pb.start()
             val returnCode = p.waitFor()
-            val reader = BufferedReader(InputStreamReader(p.inputStream))
-            val allText = reader.use(BufferedReader::readText)
-            print(allText)
             if (returnCode == 0)
                 println("${Calendar.getInstance().time}: EXECUTION SUCCESS")
-            else
+            else {
                 println("${Calendar.getInstance().time}: EXECUTION FAILURE, return code $returnCode")
+                tempLog.forEachLine { line -> println(line) }
+            }
+            if (proxyDiskTemp.exists())
+                proxyDiskTemp.deleteRecursively()
         }
     }
 }

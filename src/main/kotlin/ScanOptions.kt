@@ -3,6 +3,7 @@ import org.apache.commons.cli.Options
 
 data class ScanOptions(
         val repositoryPath: String,
+        val analysisDirectory: String,
         val sinceRevision: String?,
         val untilRevision: String?,
         val propertiesFile: String,
@@ -22,6 +23,15 @@ fun parseOptions(args: Array<String>): ScanOptions {
             .type(String::class.java)
             .desc("path to project's git repository (mandatory)" +
                     "\n(e.g. \"C:\\...\\project1\\.git\")")
+            .build()
+
+    val OPT_DIRECTORY = "directory"
+    val analysisDirectoryOption = Option.builder("d")
+            .longOpt(OPT_DIRECTORY)
+            .numberOfArgs(1)
+            .required(false)
+            .type(String::class.java)
+            .desc("Directory in which sonarqube analysis should be performed")
             .build()
 
     val OPT_SINCE = "since"
@@ -85,6 +95,7 @@ fun parseOptions(args: Array<String>): ScanOptions {
 
     val options = Options()
     options.addOption(repositoryOption)
+    options.addOption(analysisDirectoryOption)
     options.addOption(sinceRevisionOption)
     options.addOption(untilRevisionOption)
     options.addOption(propertiesFileOption)
@@ -96,6 +107,7 @@ fun parseOptions(args: Array<String>): ScanOptions {
         val parser = DefaultParser()
         val arguments = parser.parse(options, args)
         val repositoryPath = arguments.getParsedOptionValue(OPT_REPOSITORY).toString()
+        val analysisDirectory = arguments.getParsedOptionValue(OPT_DIRECTORY)?.toString() ?: ""
         val sinceRevision = arguments.getParsedOptionValue(OPT_SINCE)?.toString()
         val untilRevision = arguments.getParsedOptionValue(OPT_UNTIL)?.toString()
         val propertiesFile = arguments.getParsedOptionValue(OPT_PROPERTIES)?.toString() ?: "sonar.properties"
@@ -115,6 +127,7 @@ fun parseOptions(args: Array<String>): ScanOptions {
         }
         return ScanOptions(
                 repositoryPath,
+                analysisDirectory,
                 sinceRevision,
                 untilRevision,
                 propertiesFile,
