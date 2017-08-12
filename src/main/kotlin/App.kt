@@ -16,28 +16,23 @@ import java.lang.ProcessBuilder.Redirect
 
 fun main(args: Array<String>) {
     val scanOptions = parseOptions(args)
-    if (scanOptions != null) {
-        var tempScanDirectory: File? = null
-        val git =
-                if (scanOptions.repositoryPath.startsWith("http")) {
-                    tempScanDirectory = File("temp-scan-directory")
-                    cloneRemoteRepository(scanOptions.repositoryPath, tempScanDirectory)
-                } else {
-                    openLocalRepository(scanOptions.repositoryPath)
-                }
-        try {
-            analyseAllRevisions(git, scanOptions)
-        } finally {
-            git.close()
-        }
-
-        if (tempScanDirectory != null) {
-            if (tempScanDirectory.deleteRecursively())
-                println("Deleted $tempScanDirectory")
-            else
-                println("Could not delete $tempScanDirectory")
-        }
+    val tempScanDirectory = File("temp-scan-directory")
+    val git =
+            if (scanOptions.repositoryPath.startsWith("http")) {
+                cloneRemoteRepository(scanOptions.repositoryPath, tempScanDirectory)
+            } else {
+                copyLocalRepository(scanOptions.repositoryPath, tempScanDirectory)
+            }
+    try {
+        analyseAllRevisions(git, scanOptions)
+    } finally {
+        git.repository.close()
     }
+
+    if (tempScanDirectory.deleteRecursively())
+        println("Deleted $tempScanDirectory")
+    else
+        throw Exception("Could not delete $tempScanDirectory")
 }
 
 /*
@@ -197,6 +192,17 @@ fun  hasReached(hash: String, startFromHash: String, index: Int): Boolean {
     return hasReached
 }
 
+
+fun copyLocalRepository(repositoryPath: String, destination: File): Git {
+    val gitSource = File(repositoryPath).parentFile
+    gitSource.copyRecursively(destination)
+    println("Repository copied into ${destination.path}")
+    return openLocalRepository(destination.path + File.separator + ".git")
+}
+
+/**
+ * Returns an opened JGit repository from file path
+ */
 fun openLocalRepository(repositoryPath: String): Git {
     val builder: FileRepositoryBuilder = FileRepositoryBuilder()
     try {
@@ -209,7 +215,7 @@ fun openLocalRepository(repositoryPath: String): Git {
                 .call() //tests the repository
         return result
     } catch (e: Exception) {
-        throw Exception("Could not open the repository ${repositoryPath}", e)
+        throw Exception("Could not open the repository $repositoryPath", e)
     }
 }
 

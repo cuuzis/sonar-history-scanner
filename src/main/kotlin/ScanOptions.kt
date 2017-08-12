@@ -10,7 +10,7 @@ data class ScanOptions(
         val analyzeEvery: Int = 1,
         val revisionFile: String)
 
-fun parseOptions(args: Array<String>): ScanOptions? {
+fun parseOptions(args: Array<String>): ScanOptions {
     val OPT_REPOSITORY = "git"
     val repositoryOption = Option.builder("g")
             .longOpt(OPT_REPOSITORY)
@@ -58,7 +58,7 @@ fun parseOptions(args: Array<String>): ScanOptions? {
             .numberOfArgs(1)
             .required(false)
             .type(Int::class.java)
-            .desc("scan only every <arg0> revision " +
+            .desc("scan only every <arg> revision " +
                     "\n(e.g. --$OPT_EVERY 10)")
             .build()
 
@@ -68,7 +68,7 @@ fun parseOptions(args: Array<String>): ScanOptions? {
             .numberOfArgs(1)
             .required(false)
             .type(String::class.java)
-            .desc("scan only revisions specified in <arg0> file (each row in file must be a revision hash)")
+            .desc("scan only revisions specified in <arg> file (each row in file must be a revision hash)")
             .build()
 
     val options = Options()
@@ -135,9 +135,9 @@ fun parseOptions(args: Array<String>): ScanOptions? {
         }
 
     } catch (e: ParseException) {
-        println("Please check the input parameters: \n${e.message}")
+        //println("Please check the input parameters: \n${e.message}")
         showHelp(options)
-        return null
+        throw Exception("Please check the input parameters", e)
     }
 }
 

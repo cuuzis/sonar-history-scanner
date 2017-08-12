@@ -1,11 +1,12 @@
 import org.junit.Test
+import java.io.File
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.ArrayList
 
 
 
-class AppTest {
+class AppKtTest {
 
     @Test fun testSmoothDates() {
         val logDates = mutableListOf<Instant>()
@@ -30,6 +31,25 @@ class AppTest {
 
         for (dateToTest in logDatesToTest.withIndex()) {
             assert(dateToTest.value == logDatesSmoothed.get(dateToTest.index))
+        }
+    }
+
+    @Test
+    fun testGitCloning() {
+        val testDirPath = "temp-test-dir"
+        val tmpDir = File(testDirPath)
+        try {
+            val tmpCloneDir = File(testDirPath + File.separator + "clone")
+            val tmpCopyDir = File(testDirPath + File.separator + "copy")
+            val gitClone = cloneRemoteRepository("https://github.com/cuuzis/java-project-for-sonar-scanner-testing.git", tmpCloneDir)
+            val gitCopy = copyLocalRepository(gitClone.repository.directory.parent + File.separator + ".git", tmpCopyDir)
+            assert(gitClone.log().call().toList() == gitCopy.log().call().toList())
+            gitClone.repository.close()
+            gitCopy.repository.close()
+        } finally {
+            tmpDir.deleteRecursively()
+            if (!tmpDir.deleteRecursively())
+                throw Exception("Could not delete $testDirPath")
         }
     }
 }
