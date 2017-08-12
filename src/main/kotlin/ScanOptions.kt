@@ -3,13 +3,16 @@ import org.apache.commons.cli.Options
 
 data class ScanOptions(
         val repositoryPath: String,
-        val startFromRevision: String,
+        val sinceRevision: String?,
+        val untilRevision: String?,
         val propertiesFile: String,
-        val changeProperties: List<String> = ArrayList<String>(),
-        val changeRevisions: List<String> = ArrayList<String>(),
-        val analyzeEvery: Int = 1,
-        val revisionFile: String)
+        val changePropertiesAtRevisions: Map<String, String>,
+        val analyseEvery: Int,
+        val revisionFile: String?)
 
+/**
+ * Saves command line arguments to ScanOptions data object
+ */
 fun parseOptions(args: Array<String>): ScanOptions {
     val OPT_REPOSITORY = "git"
     val repositoryOption = Option.builder("g")
@@ -22,12 +25,21 @@ fun parseOptions(args: Array<String>): ScanOptions {
             .build()
 
     val OPT_SINCE = "since"
-    val firstRevisionOption = Option.builder("s")
+    val sinceRevisionOption = Option.builder("s")
             .longOpt(OPT_SINCE)
             .numberOfArgs(1)
             .required(false)
             .type(String::class.java)
             .desc("analyse only revisions since this commit")
+            .build()
+
+    val OPT_UNTIL = "until"
+    val untilRevisionOption = Option.builder("u")
+            .longOpt(OPT_UNTIL)
+            .numberOfArgs(1)
+            .required(false)
+            .type(String::class.java)
+            .desc("analyse only revisions until this commit (included)")
             .build()
 
     val OPT_PROPERTIES = "properties"
@@ -63,7 +75,7 @@ fun parseOptions(args: Array<String>): ScanOptions {
             .build()
 
     val OPT_FILE = "file"
-    val revisionFile = Option.builder("f")
+    val revisionFileOption = Option.builder("f")
             .longOpt(OPT_FILE)
             .numberOfArgs(1)
             .required(false)
@@ -73,71 +85,49 @@ fun parseOptions(args: Array<String>): ScanOptions {
 
     val options = Options()
     options.addOption(repositoryOption)
-    options.addOption(firstRevisionOption)
+    options.addOption(sinceRevisionOption)
+    options.addOption(untilRevisionOption)
     options.addOption(propertiesFileOption)
     options.addOption(changePropertiesFileOption)
     options.addOption(scanEveryOption)
-    options.addOption(revisionFile)
+    options.addOption(revisionFileOption)
 
     try {
         val parser = DefaultParser()
-        val cmdLine = parser.parse(options, args)
-        val repositoryPath = cmdLine.getParsedOptionValue(OPT_REPOSITORY).toString()
-        val startFromRevision =
-                if (cmdLine.hasOption(OPT_SINCE))
-                    cmdLine.getParsedOptionValue(OPT_SINCE).toString()
-                else
-                    ""
-        val propertiesFile =
-                if (cmdLine.hasOption(OPT_PROPERTIES))
-                    cmdLine.getParsedOptionValue(OPT_PROPERTIES).toString()
-                else
-                    "sonar.properties"
-        val analyseEvery =
-                if (cmdLine.hasOption(OPT_EVERY)) {
-                    try {
-                        Integer.valueOf(cmdLine.getOptionValue(OPT_EVERY))
-                    } catch (e: Exception) {
-                        -1
-                    }
-                } else
-                    1
+        val arguments = parser.parse(options, args)
+        val repositoryPath = arguments.getParsedOptionValue(OPT_REPOSITORY).toString()
+        val sinceRevision = arguments.getParsedOptionValue(OPT_SINCE)?.toString()
+        val untilRevision = arguments.getParsedOptionValue(OPT_UNTIL)?.toString()
+        val propertiesFile = arguments.getParsedOptionValue(OPT_PROPERTIES)?.toString() ?: "sonar.properties"
+        val analyseEvery = (arguments.getOptionValue(OPT_EVERY) ?: "1").toIntOrNull() ?: -1
         if (analyseEvery < 1)
-            throw Exception("-$OPT_EVERY Analyse every revision should be a number greater or equal to 1")
-        val revFile =
-                if (cmdLine.hasOption(OPT_FILE))
-                    cmdLine.getParsedOptionValue(OPT_FILE).toString()
-                else
-                    ""
-        if (cmdLine.hasOption(OPT_CHANGE)) {
-            val changeProperties = cmdLine.getOptionValues(OPT_CHANGE)[0].split(",")
-            val changeRevisions = cmdLine.getOptionValues(OPT_CHANGE)[1].split(",")
+            throw ParseException("--$OPT_EVERY: Analyse every revision should be a number greater or equal to 1")
+        val revisionFile = arguments.getParsedOptionValue(OPT_FILE)?.toString()
+        var changePropertiesAtRevisions = mapOf<String, String>()
+        if (arguments.hasOption(OPT_CHANGE)) {
+            val changeProperties = arguments.getOptionValues(OPT_CHANGE)[0].split(",")
+            val changeRevisions = arguments.getOptionValues(OPT_CHANGE)[1].split(",")
             if (changeProperties.size != changeRevisions.size)
-                throw ParseException("-$OPT_CHANGE Each changed property file should correspond to a revision hash.")
-            for (filename in changeProperties)
-                if (filename == "")
-                    throw ParseException("-$OPT_CHANGE Change properties filename should not be empty.")
-            return ScanOptions(
-                    repositoryPath,
-                    startFromRevision,
-                    propertiesFile,
-                    changeProperties,
-                    changeRevisions,
-                    analyzeEvery = analyseEvery,
-                    revisionFile = revFile)
-        } else {
-            return ScanOptions(
-                    repositoryPath,
-                    startFromRevision,
-                    propertiesFile,
-                    analyzeEvery = analyseEvery,
-                    revisionFile = revFile)
+                throw ParseException("--$OPT_CHANGE: Each changed property file should correspond to a revision hash.")
+            if (changeProperties.contains(""))
+                throw ParseException("--$OPT_CHANGE: Change properties filename should not be empty.")
+            changePropertiesAtRevisions = changeRevisions.zip(changeProperties).toMap()
         }
+        return ScanOptions(
+                repositoryPath,
+                sinceRevision,
+                untilRevision,
+                propertiesFile,
+                changePropertiesAtRevisions,
+                analyseEvery,
+                revisionFile)
 
     } catch (e: ParseException) {
-        //println("Please check the input parameters: \n${e.message}")
+        println("Please check the input parameters:")
+        println(e.message)
+        println()
         showHelp(options)
-        throw Exception("Please check the input parameters", e)
+        throw Exception()
     }
 }
 

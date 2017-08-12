@@ -6,7 +6,7 @@
 
     <groupId>it.unibz.inf</groupId>
     <artifactId>sonar-history-scanner</artifactId>
-    <version>0.4.3</version>
+    <version>0.5.0</version>
 
     <!-- https://kotlinlang.org/docs/reference/using-maven.html -->
     <properties>
@@ -35,7 +35,7 @@
         <dependency>
             <groupId>org.apache.commons</groupId>
             <artifactId>commons-lang3</artifactId>
-            <version>3.4</version>
+            <version>3.5</version>
         </dependency>
         <dependency>
             <groupId>junit</groupId>
