@@ -64,7 +64,7 @@ fun analyseAllRevisions(git: Git, scanOptions: ScanOptions) {
             val sonarDateStr = getSonarDate(logDateSonar)
             print("Analysing revision: $sonarDateStr $logHash .. ")
 
-            checkoutFromCmd(logHash, git)
+            checkoutFromJGit(logHash, git)
 
             val scannerCmd: String
             if (SystemUtils.IS_OS_WINDOWS)
@@ -148,6 +148,16 @@ fun checkoutFromCmd(logHash: String, git: Git) {
     print(allText)
     if (returnCode != 0)
         throw Exception("git checkout error")
+}
+
+/**
+ * Checks out the revision with specified hash, using JGit library
+ */
+fun checkoutFromJGit(logHash: String?, git: Git) {
+    git.checkout()
+            .setForce(true)
+            .setName(logHash)
+            .call()
 }
 
 /**
