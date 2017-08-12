@@ -1,5 +1,6 @@
 import org.apache.commons.cli.*
 import org.apache.commons.cli.Options
+import java.io.File
 
 data class ScanOptions(
         val repositoryPath: String,
@@ -59,7 +60,7 @@ fun parseOptions(args: Array<String>): ScanOptions {
             .required(false)
             .type(String::class.java)
             .desc("specify sonar scanner properties filename" +
-                    "\n(default is \"sonar.properties\")")
+                    "\n(default is \"sonar-history.properties\")")
             .build()
 
     val OPT_CHANGE = "change"
@@ -69,8 +70,8 @@ fun parseOptions(args: Array<String>): ScanOptions {
             .required(false)
             .type(String::class.java)
             .desc("use different properties since this revision" +
-                    "\n<arg0> is sonar.properties files, separated by commas" +
-                    "\n<arg1> is revisions to start using these property files from, separated by commas" +
+                    "\n<arg0> is sonar-x.properties files, separated by commas" +
+                    "\n<arg1> is revisions to use these property files since, separated by commas" +
                     "\n(e.g. --$OPT_CHANGE properties1,properties2 hash1,hash2)")
             .build()
 
@@ -110,7 +111,9 @@ fun parseOptions(args: Array<String>): ScanOptions {
         val analysisDirectory = arguments.getParsedOptionValue(OPT_DIRECTORY)?.toString() ?: ""
         val sinceRevision = arguments.getParsedOptionValue(OPT_SINCE)?.toString()
         val untilRevision = arguments.getParsedOptionValue(OPT_UNTIL)?.toString()
-        val propertiesFile = arguments.getParsedOptionValue(OPT_PROPERTIES)?.toString() ?: "sonar.properties"
+        val propertiesFile = arguments.getParsedOptionValue(OPT_PROPERTIES)?.toString() ?: "sonar-history.properties"
+        if (!File(propertiesFile).exists())
+            throw ParseException("File $propertiesFile does not exist")
         val analyseEvery = (arguments.getOptionValue(OPT_EVERY) ?: "1").toIntOrNull() ?: -1
         if (analyseEvery < 1)
             throw ParseException("--$OPT_EVERY: Analyse every revision should be a number greater or equal to 1")
@@ -123,6 +126,9 @@ fun parseOptions(args: Array<String>): ScanOptions {
                 throw ParseException("--$OPT_CHANGE: Each changed property file should correspond to a revision hash.")
             if (changeProperties.contains(""))
                 throw ParseException("--$OPT_CHANGE: Change properties filename should not be empty.")
+            changeProperties
+                    .filterNot { File(it).exists() }
+                    .forEach { throw ParseException("File $it does not exist") }
             changePropertiesAtRevisions = changeRevisions.zip(changeProperties).toMap()
         }
         return ScanOptions(

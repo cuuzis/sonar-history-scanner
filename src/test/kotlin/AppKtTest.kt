@@ -41,17 +41,4 @@ class AppKtTest {
                 throw Exception("Could not delete $testDirPath")
         }
     }
-
-    /*@Test
-    fun testOptions() {
-        val args = arrayOf(
-                "--git", "https://github.com/cuuzis/java-project-for-sonar-scanner-testing.git",
-                "--since", "8523f8cd3a5dd79b37ce1ed9718fce3f5fb04fb5",
-                //"--every", "1",
-                "--properties", "my.properties",
-                "--change", "my2.properties,my3.properties", "e589d2a8065966aa3cdec64038ca3d4a652ffb7c,1e5fd9f8b1c7be6221b55772a39b16970509a0c4"
-        )
-        val options = parseOptions(args)
-        //println(options.changeRevisions)
-    }*/
 }
